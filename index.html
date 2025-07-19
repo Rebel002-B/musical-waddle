@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en" >
+<head>
+  <meta charset="UTF-8" />
+  <title>IP Logger Terminal - WARNING</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body {
+      margin: 0; padding: 0; height: 100%; width: 100%;
+      background: black;
+      overflow: hidden;
+      font-family: 'Courier New', Courier, monospace;
+      color: #00ff00;
+      user-select: none;
+    }
+    #terminal {
+      box-sizing: border-box;
+      padding: 20px;
+      width: 100vw;
+      height: 100vh;
+      white-space: pre-wrap;
+      font-size: 18px;
+      line-height: 1.4;
+      overflow-y: auto;
+      background: black;
+      text-shadow:
+        0 0 5px #00ff00,
+        0 0 10px #00ff00,
+        0 0 20px #00ff00,
+        0 0 40px #00ff00;
+      position: relative;
+    }
+    #intro {
+      animation: blink 1s steps(1) infinite;
+      margin-bottom: 10px;
+    }
+    @keyframes blink {
+      0%,100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .glitch {
+      color: #00ff00;
+      position: relative;
+      animation: glitchAnim 2s infinite;
+      user-select:none;
+    }
+    @keyframes glitchAnim {
+      0% {
+        text-shadow:
+          1px 0 red,
+          -1px 0 cyan;
+      }
+      20% {
+        text-shadow:
+          2px 0 red,
+          -2px 0 cyan;
+      }
+      40% {
+        text-shadow:
+          -1px 0 red,
+          1px 0 cyan;
+      }
+      60% {
+        text-shadow:
+          1px 0 red,
+          -1px 0 cyan;
+      }
+      80% {
+        text-shadow:
+          0 0 transparent;
+      }
+      100% {
+        text-shadow:
+          1px 0 red,
+          -1px 0 cyan;
+      }
+    }
+    .error-text {
+      color: #ff0000;
+      font-weight: bold;
+      text-shadow:
+        0 0 10px #ff0000;
+      user-select:none;
+    }
+    /* Glitch flicker overlay */
+    #glitchOverlay {
+      pointer-events: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background: transparent;
+      mix-blend-mode: screen;
+      animation: flicker 0.15s infinite;
+      z-index: 9999;
+    }
+    @keyframes flicker {
+      0%, 100% {opacity: 0.15;}
+      50% {opacity: 0.05;}
+    }
+    /* Scrollbar styles */
+    #terminal::-webkit-scrollbar {
+      width: 8px;
+    }
+    #terminal::-webkit-scrollbar-thumb {
+      background: #00ff00;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div id="terminal">
+    <div id="intro"></div>
+    <div id="output"></div>
+  </div>
+  <div id="glitchOverlay"></div>
+
+  <audio id="evilAudio" src="https://raw.githubusercontent.com/Rebel002-B/musical-waddle/main/Evil.mp3" autoplay loop></audio>
+
+  <script>
+    // Force fullscreen (user interaction usually required)
+    function requestFullscreen() {
+      const el = document.documentElement;
+      if (el.requestFullscreen) {
+        el.requestFullscreen();
+      } else if (el.webkitRequestFullscreen) {
+        el.webkitRequestFullscreen();
+      } else if (el.msRequestFullscreen) {
+        el.msRequestFullscreen();
+      }
+    }
+
+    window.onload = () => {
+      setTimeout(requestFullscreen, 500);
+      startTerminal();
+      setupAudioLoop();
+    };
+
+    // Setup audio looping with fallback
+    function setupAudioLoop() {
+      const audio = document.getElementById("evilAudio");
+      audio.volume = 0.5;
+      audio.play().catch(() => {
+        // Autoplay blocked - you could add a click-to-start overlay here if you want
+      });
+      audio.addEventListener('ended', () => {
+        audio.currentTime = 0;
+        audio.play();
+      });
+    }
+
+    const intro = document.getElementById("intro");
+    const output = document.getElementById("output");
+
+    async function getUserInfo() {
+      let ip = "Unavailable";
+      let city = "Unknown";
+      let region = "";
+      let country = "";
+      try {
+        const res = await fetch("https://ipapi.co/json");
+        const data = await res.json();
+        ip = data.ip;
+        city = data.city;
+        region = data.region;
+        country = data.country_name;
+      } catch {
+        // fail silently
+      }
+      return {
+        ip,
+        location: `${city}, ${region}, ${country}`,
+        browser: navigator.userAgent,
+        platform: navigator.platform,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        language: navigator.language,
+        screen: `${screen.width}x${screen.height}`
+      };
+    }
+
+    function typeLine(line, container) {
+      return new Promise(resolve => {
+        let i = 0;
+        const span = document.createElement("div");
+        container.appendChild(span);
+        const interval = setInterval(() => {
+          span.textContent += line[i++];
+          if (i >= line.length) {
+            clearInterval(interval);
+            resolve();
+          }
+        }, 30);
+      });
+    }
+
+    async function typeLines(lines, container) {
+      for (const line of lines) {
+        const text = typeof line === "function" ? line() : line;
+        await typeLine(text, container);
+        await new Promise(r => setTimeout(r, 150));
+        output.parentElement.scrollTop = output.parentElement.scrollHeight; // autoscroll
+      }
+    }
+
+    async function glitchText(container, text, times = 6, delay = 80) {
+      for (let i=0; i < times; i++) {
+        container.textContent = [...text].map(c => (Math.random() < 0.3 ? String.fromCharCode(33 + Math.floor(Math.random() * 94)) : c)).join('');
+        await new Promise(r => setTimeout(r, delay));
+      }
+      container.textContent = text;
+    }
+
+    async function scaryCountdown(container, start = 5) {
+      for(let i = start; i >= 0; i--) {
+        container.textContent = `>>> SENDING DATA IN: ${i} <<<`;
+        await glitchText(container, container.textContent, 8, 60);
+        await new Promise(r => setTimeout(r, 700));
+      }
+    }
+
+    async function startTerminal() {
+      const info = await getUserInfo();
+
+      intro.textContent = ">>> SYSTEM BOOTING UP <<<";
+
+      const initialLines = [
+        "Loading system interface...",
+        "Initializing IP trace...",
+        "Decrypting public node gateway...",
+        "Accessing unsecured network...",
+        "Reading device metadata...",
+        ""
+      ];
+
+      await typeLines(initialLines, output);
+
+      const infoLines = [
+        () => `IP Address: ${info.ip}`,
+        () => `Location: ${info.location}`,
+        () => `Device: ${info.platform}`,
+        () => `Browser: ${info.browser}`,
+        () => `Screen: ${info.screen}`,
+        () => `Language: ${info.language}`,
+        () => `Timezone: ${info.timezone}`,
+        () => "Firewall: [Detected]",
+        () => "VPN: [None]",
+        () => "Status: OK",
+        ""
+      ];
+
+      await typeLines(infoLines, output);
+
+      // Fake "Sending data..." scary sequence
+      const sendLine = document.createElement("div");
+      sendLine.classList.add("glitch");
+      output.appendChild(sendLine);
+      await scaryCountdown(sendLine);
+
+      // Show fake error message with glitch effect
+      const errorLine = document.createElement("div");
+      errorLine.classList.add("error-text");
+      output.appendChild(errorLine);
+      await glitchText(errorLine, "!!! SECURITY BREACH DETECTED !!!", 12, 80);
+      await new Promise(r => setTimeout(r, 1000));
+      await glitchText(errorLine, "!!! SYSTEM LOCKDOWN INITIATED !!!", 12, 80);
+
+      intro.textContent = ">>> SYSTEM FAILURE <<<";
+
+      // Scroll terminal to bottom
+      output.parentElement.scrollTop = output.parentElement.scrollHeight;
+    }
+  </script>
+</body>
+</html>
+
